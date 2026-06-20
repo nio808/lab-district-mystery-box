@@ -1,0 +1,22 @@
+{
+  "name": "lab-district-mystery-box",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Lab District — live mystery box prize board",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name lab-district-mystery-box"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.3",
+    "wrangler": "^4.103.0"
+  }
+}
