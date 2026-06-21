@@ -92,6 +92,16 @@ input:focus-visible {
   margin-bottom: 18px;
 }
 
+.tld-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.tld-inventory-card {
+  min-width: 0;
+}
+
 .tld-header {
   display: flex;
   align-items: center;

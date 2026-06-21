@@ -32,6 +32,38 @@ const DEFAULT_ITEMS = [
   { name: 'Mystery Bonus Prize', value: '$500' }
 ];
 
+function itemKey(item) {
+  return item.name + '\x00' + item.value;
+}
+
+function groupItems(items) {
+  const map = new Map();
+  items.forEach(it => {
+    const key = itemKey(it);
+    const entry = map.get(key);
+    if (entry) entry.count += 1;
+    else map.set(key, { name: it.name, value: it.value, count: 1 });
+  });
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function boardInventory(tiles) {
+  const map = new Map();
+  tiles.forEach(tl => {
+    if (!tl.item) return;
+    const key = itemKey(tl.item);
+    const entry = map.get(key) || { name: tl.item.name, value: tl.item.value, total: 0, remaining: 0, claimed: 0 };
+    entry.total += 1;
+    if (tl.revealed) entry.claimed += 1;
+    else entry.remaining += 1;
+    map.set(key, entry);
+  });
+  return Array.from(map.values()).sort((a, b) => {
+    if (b.remaining !== a.remaining) return b.remaining - a.remaining;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function makeTiles(size, roster) {
   const idx = Array.from({ length: size }, (_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) {
@@ -251,10 +283,17 @@ export default function App() {
     setDraftValue('');
   }, [draftName, draftValue]);
 
-  const removeItem = useCallback((idx) => {
+  const removeOnePrize = useCallback((name, value) => {
     setRoster(prev => {
+      const idx = prev.findIndex(it => it.name === name && it.value === value);
+      if (idx < 0) return prev;
       const target = prev[idx];
-      setTiles(tls => tls.map(tl => tl.item === target ? { ...tl, item: null } : tl));
+      setTiles(tls => {
+        const tileIdx = tls.findIndex(tl => tl.item === target && !tl.revealed);
+        const pick = tileIdx >= 0 ? tileIdx : tls.findIndex(tl => tl.item === target);
+        if (pick < 0) return tls;
+        return tls.map((tl, i) => i === pick ? { ...tl, item: null } : tl);
+      });
       return prev.filter((_, i) => i !== idx);
     });
   }, []);
@@ -271,6 +310,8 @@ export default function App() {
   const claimed = tiles.filter(tl => tl.revealed && tl.item).length;
   const revealedCount = tiles.filter(tl => tl.revealed).length;
   const pct = size ? Math.round(revealedCount / size * 100) : 0;
+  const inventory = useMemo(() => boardInventory(tiles), [tiles]);
+  const rosterGroups = useMemo(() => groupItems(roster), [roster]);
 
   const numSize = cols <= 5 ? 'clamp(16px,2.4vw,30px)' : cols <= 10 ? 'clamp(11px,1.5vw,18px)' : cols <= 20 ? '10px' : '7px';
   const titleSize = cols <= 5 ? '13px' : cols <= 10 ? '10px' : '7px';
@@ -385,6 +426,54 @@ export default function App() {
           ))}
         </div>
 
+        {inventory.length > 0 && (
+          <div className="tld-inventory" style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, letterSpacing: '.12em', color: 'var(--muted)', fontWeight: 700, marginBottom: 10 }}>PRIZES ON BOARD</div>
+            <div className="tld-inventory-grid">
+              {inventory.map(entry => (
+                <div
+                  key={itemKey(entry)}
+                  className="tld-inventory-card"
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 12,
+                    background: entry.remaining > 0 ? 'var(--panel)' : 'var(--bg)',
+                    border: `1px solid ${entry.remaining > 0 ? 'var(--border)' : 'var(--emptyEdge)'}`,
+                    opacity: entry.remaining > 0 ? 1 : 0.55
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                    <span style={{
+                      fontFamily: "'Playfair Display',serif",
+                      fontWeight: 900,
+                      fontSize: 22,
+                      lineHeight: 1,
+                      color: entry.remaining > 0 ? 'var(--accent)' : 'var(--muted)',
+                      flex: '0 0 auto'
+                    }}>{entry.remaining}×</span>
+                    <span style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: 'var(--text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>{entry.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+                    {entry.value && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--win)' }}>{entry.value}</span>
+                    )}
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                      {entry.claimed > 0 ? `${entry.claimed} claimed` : `${entry.total} total`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {adminOpen && (
           <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 18, padding: 20, marginBottom: 20, boxShadow: '0 18px 50px rgba(0,0,0,.35)' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
@@ -396,11 +485,12 @@ export default function App() {
                   <button type="button" onClick={addItem} style={{ padding: '11px 16px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: '#06121d', fontWeight: 700, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }}>Add</button>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 12, maxHeight: 96, overflow: 'auto' }}>
-                  {roster.map((it, i) => (
-                    <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 999, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: 12 }}>
+                  {rosterGroups.map(it => (
+                    <span key={itemKey(it)} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 999, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: 12 }}>
+                      <span style={{ fontFamily: "'Playfair Display',serif", fontWeight: 800, color: 'var(--accent)' }}>{it.count}×</span>
                       <span style={{ color: 'var(--text)' }}>{it.name}</span>
                       <span style={{ color: 'var(--win)', fontWeight: 600 }}>{it.value}</span>
-                      <button type="button" onClick={() => removeItem(i)} style={{ cursor: 'pointer', color: 'var(--muted)', fontWeight: 700, background: 'none', border: 'none', padding: 0, fontSize: 14, lineHeight: 1 }} aria-label={`Remove ${it.name}`}>&times;</button>
+                      <button type="button" onClick={() => removeOnePrize(it.name, it.value)} style={{ cursor: 'pointer', color: 'var(--muted)', fontWeight: 700, background: 'none', border: 'none', padding: 0, fontSize: 14, lineHeight: 1 }} aria-label={`Remove one ${it.name}`}>&times;</button>
                     </span>
                   ))}
                 </div>
